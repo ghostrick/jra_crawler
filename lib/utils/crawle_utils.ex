@@ -25,8 +25,9 @@ defmodule JraCrawler.CrawlUtils do
 
     ranking = fetch_ranking(document)
     detail = fetch_detail(document)
+    refund = fetch_refund(document)
 
-    %{detail: detail, ranking: ranking}
+    %{detail: detail, ranking: ranking, refund: refund}
   end
 
   defp fetch_detail(document) do
@@ -83,6 +84,42 @@ defmodule JraCrawler.CrawlUtils do
       |> Enum.filter(fn {k, _} -> k != nil end)
       |> Enum.into(%{})
     end)
+  end
+
+  # 払戻金リストから必要な情報を切り抜く
+  def fetch_refund(document) do
+    refund_document =
+      document
+      |> Floki.find(".refund_area")
+      |> Enum.fetch!(0)
+
+    trio = fetch_refund_item(refund_document, "trio")
+    tierce = fetch_refund_item(refund_document, "tierce")
+    umatan = fetch_refund_item(refund_document, "umatan")
+    umaren = fetch_refund_item(refund_document, "umaren")
+    wide = fetch_refund_item(refund_document, "wide", multiple: true)
+
+    %{trio: trio, wide: wide, tierce: tierce, umaren: umaren, umatan: umatan}
+  end
+
+  # 払戻金リストのli要素から必要な情報を切り抜く
+  defp fetch_refund_item(document, class, opts \\ []) do
+    resp =
+      document
+      |> Floki.find("li.#{class} .line")
+      |> Enum.map(fn {_tag, _attr, children} -> children end)
+      |> Enum.map(fn items -> items end)
+      |> Enum.map(fn [number, fee, popular_rank] ->
+        %{
+          number: text(number),
+          fee: Regex.replace(~r/円|,/, fee |> text(), "") |> to_integer(),
+          popular_rank: text(popular_rank, deep: false) |> to_integer()
+        }
+      end)
+
+    if opts[:multiple],
+      do: resp,
+      else: Enum.fetch!(resp, 0)
   end
 
   # 欲しい情報のkeyを適切に変換していらないものはnil
